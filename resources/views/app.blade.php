@@ -4,7 +4,7 @@
 
 @push('styles')
     <script src="https://cdn.jsdelivr.net/npm/pusher-js@8.3.0/dist/web/pusher.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.15.3/dist/echo.iife.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/laravel-echo@1.16.1/dist/echo.iife.js"></script>
 @endpush
 
 @section('content')
@@ -56,8 +56,17 @@
             <!-- Email List -->
             <div class="email-list">
                 <div class="email-list-header">
-                    <h2>Inbox</h2>
-                    <span class="email-count" id="emailCount">0</span>
+                    <div class="header-left">
+                        <input type="checkbox" id="selectAll" onclick="toggleSelectAll(event)">
+                        <h2>Inbox</h2>
+                    </div>
+                    <button id="bulkDeleteBtn" class="btn btn-danger btn-sm hidden" onclick="deleteSelectedEmails()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M3 6h18"></path>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                        Delete
+                    </button>
                 </div>
                 <div class="email-items" id="emailList">
                     <div class="empty-state" id="emptyState">
@@ -111,6 +120,7 @@
         let inboxData = null;
         let emails = [];
         let selectedEmailId = null;
+        let selectedEmailIds = new Set();
         let timerInterval = null;
         let echoInstance = null;
         let currentChannel = null;
@@ -120,9 +130,9 @@
 
         // Reverb WebSocket config
         const REVERB_CONFIG = {
-            key: '{{ config("reverb.apps.apps.0.key", "temp-mail-key") }}',
-            wsHost: '{{ config("reverb.servers.reverb.hostname", "localhost") }}',
-            wsPort: {{ config("reverb.servers.reverb.port", 8080) }},
+            key: '{{ config('reverb.apps.apps.0.key') }}',
+            wsHost: '{{ config('reverb.servers.reverb.hostname') ?? 'localhost' }}',
+            wsPort: {{ config('reverb.servers.reverb.port') ?? 8080 }},
             forceTLS: false,
             enabledTransports: ['ws', 'wss'],
             disableStats: true,
@@ -151,7 +161,17 @@
                                 await createNewInbox();
                                 return;
                             }
-                            inboxData = { ...data.data, token: savedToken };
+
+                            // If user is NOT authenticated but inbox IS authenticated (logout case), create new guest inbox
+                            if (!isUserAuthenticated && data.data.is_authenticated) {
+                                console.log('Guest user with auth inbox (logout detected), creating new inbox...');
+                                await createNewInbox();
+                                return;
+                            }
+                            inboxData = {
+                                ...data.data,
+                                token: savedToken
+                            };
                             updateUI();
                             await loadEmails();
                             subscribeToInbox();
@@ -184,6 +204,7 @@
                     localStorage.setItem('inboxToken', inboxData.token);
                     emails = [];
                     selectedEmailId = null;
+                    selectedEmailIds.clear();
                     updateUI();
                     renderEmails();
                     showViewer(null);
@@ -252,7 +273,6 @@
                     const oldCount = emails.length;
                     emails = data.data;
                     renderEmails(oldCount < emails.length);
-                    document.getElementById('emailCount').textContent = emails.length;
                 }
             } catch (e) {
                 console.error('Error loading emails:', e);
@@ -264,41 +284,140 @@
             showToast('Inbox refreshed', 'success');
         }
 
+        function getAttachmentBadgeHtml(count) {
+            if (count <= 0) return '';
+            return `
+                <span class="email-attachment-badge">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+                    </svg>
+                    ${count}
+                </span>
+            `;
+        }
+
         function renderEmails(hasNew = false) {
             const container = document.getElementById('emailList');
 
             if (emails.length === 0) {
                 container.innerHTML = `
-                        <div class="empty-state">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                                <polyline points="22,6 12,13 2,6"></polyline>
-                            </svg>
-                            <h3>No emails yet</h3>
-                            <p>Emails sent to your temp address will appear here</p>
-                        </div>
-                    `;
+                    <div class="empty-state">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+                            <polyline points="22,6 12,13 2,6"></polyline>
+                        </svg>
+                        <h3>No emails yet</h3>
+                        <p>Emails sent to your temp address will appear here</p>
+                    </div>
+                `;
+                document.getElementById('selectAll').checked = false;
+                updateBulkDeleteVisibility();
                 return;
             }
 
             container.innerHTML = emails.map((email, index) => `
-                    <div class="email-item ${!email.is_read ? 'unread' : ''} ${selectedEmailId === email.id ? 'active' : ''} ${hasNew && index === 0 ? 'new' : ''}"
-                         onclick="viewEmail(${email.id})">
+                <div class="email-item ${!email.is_read ? 'unread' : ''} ${selectedEmailId === email.id ? 'active' : ''} ${hasNew && index === 0 ? 'new' : ''}"
+                     onclick="handleEmailClick(event, ${email.id})">
+                    <div class="email-item-checkbox">
+                        <input type="checkbox" ${selectedEmailIds.has(email.id) ? 'checked' : ''} 
+                               onclick="toggleEmailSelection(event, ${email.id})">
+                    </div>
+                    <div class="email-item-content">
                         <div class="email-from">${escapeHtml(email.from_name || email.from_email)}</div>
                         <div class="email-subject">${escapeHtml(email.subject || '(No Subject)')}</div>
                         <div class="email-meta">
                             <span>${formatDate(email.received_at)}</span>
-                            ${email.attachments_count > 0 ? `
-                                <span class="email-attachment-badge">
-                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
-                                    </svg>
-                                    ${email.attachments_count}
-                                </span>
-                            ` : ''}
+                            ${getAttachmentBadgeHtml(email.attachments_count)}
                         </div>
                     </div>
-                `).join('');
+                </div>
+            `).join('');
+
+            updateBulkDeleteVisibility();
+        }
+
+        function handleEmailClick(event, emailId) {
+            if (event.target.tagName === 'INPUT') return;
+            viewEmail(emailId);
+        }
+
+        function toggleEmailSelection(event, emailId) {
+            event.stopPropagation();
+            if (event.target.checked) {
+                selectedEmailIds.add(emailId);
+            } else {
+                selectedEmailIds.delete(emailId);
+            }
+            updateBulkDeleteVisibility();
+            updateSelectAllState();
+        }
+
+        function toggleSelectAll(event) {
+            const checked = event.target.checked;
+            if (checked) {
+                emails.forEach(email => selectedEmailIds.add(email.id));
+            } else {
+                selectedEmailIds.clear();
+            }
+            renderEmails();
+        }
+
+        function updateSelectAllState() {
+            const selectAll = document.getElementById('selectAll');
+            if (emails.length === 0) {
+                selectAll.checked = false;
+                return;
+            }
+            selectAll.checked = emails.every(email => selectedEmailIds.has(email.id));
+        }
+
+        function updateBulkDeleteVisibility() {
+            const btn = document.getElementById('bulkDeleteBtn');
+            if (selectedEmailIds.size > 0) {
+                btn.classList.remove('hidden');
+                btn.innerHTML = `
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 6h18"></path>
+                        <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    </svg>
+                    Delete (${selectedEmailIds.size})
+                `;
+            } else {
+                btn.classList.add('hidden');
+            }
+        }
+
+        async function deleteSelectedEmails() {
+            if (selectedEmailIds.size === 0) return;
+            if (!confirm(`Are you sure you want to delete ${selectedEmailIds.size} emails?`)) return;
+
+            try {
+                const response = await fetch(`${API_BASE}/inbox/${inboxData.token}/emails`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content
+                    },
+                    body: JSON.stringify({
+                        ids: Array.from(selectedEmailIds)
+                    })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    showToast(data.message, 'success');
+                    if (selectedEmailIds.has(selectedEmailId)) {
+                        showViewer(null);
+                        selectedEmailId = null;
+                    }
+                    selectedEmailIds.clear();
+                    await loadEmails();
+                } else {
+                    showToast('Failed to delete emails', 'error');
+                }
+            } catch (e) {
+                showToast('Error deleting emails', 'error');
+            }
         }
 
         async function viewEmail(emailId) {
@@ -398,7 +517,7 @@
 
                 currentChannel = `inbox.${inboxData.id}`;
                 echoInstance.channel(currentChannel)
-                    .listen('NewEmailReceived', (e) => {
+                    .listen('.email.received', (e) => {
                         console.log('New email received:', e);
                         loadEmails();
                         showToast('New email received!', 'success');

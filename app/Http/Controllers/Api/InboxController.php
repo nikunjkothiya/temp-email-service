@@ -22,6 +22,12 @@ class InboxController extends Controller
         
         // Generate inbox with appropriate expiration
         // Auth users: 1 week, Guest users: 1 hour
+        
+        // If user is authenticated, delete their old inboxes first
+        if ($user) {
+            Inbox::where('user_id', $user->id)->delete();
+        }
+
         $inbox = Inbox::generateNew($domain, $user);
         
         $expiryLabel = $user ? '1 week' : '1 hour';

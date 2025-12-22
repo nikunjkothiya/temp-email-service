@@ -32,6 +32,9 @@ Route::prefix('inbox')->group(function () {
         // List all emails
         Route::get('/', [EmailController::class, 'index']);
         
+        // Bulk delete emails
+        Route::delete('/', [EmailController::class, 'bulkDestroy']);
+        
         // Get single email
         Route::get('/{emailId}', [EmailController::class, 'show']);
         

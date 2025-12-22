@@ -126,6 +126,30 @@ php artisan smtp:serve
 
 ---
 
+## 📧 Using as Local SMTP Server
+
+You can use this project as a local SMTP server to test email sending from your other applications.
+
+### 1. Start the Server
+The SMTP server starts automatically with `composer run dev`. It listens on `127.0.0.1:2525`.
+
+### 2. Configure Your Other App
+Update the `.env` of your other project:
+
+```env
+MAIL_MAILER=smtp
+MAIL_HOST=127.0.0.1
+MAIL_PORT=2525
+MAIL_USERNAME=null
+MAIL_PASSWORD=null
+MAIL_ENCRYPTION=null
+```
+
+### 3. Send & View
+Send an email from your other app to any active `@tempmail.local` address (e.g., `test@tempmail.local`). It will appear instantly in the Temp Mail inbox!
+
+---
+
 ## 🔧 Configuration
 
 ### Key Environment Variables

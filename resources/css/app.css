@@ -304,6 +304,19 @@ body {
     font-weight: 600;
 }
 
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.header-left input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+    accent-color: var(--primary);
+}
+
 .email-count {
     background: var(--primary);
     color: white;
@@ -323,6 +336,25 @@ body {
     border-bottom: 1px solid var(--border);
     cursor: pointer;
     transition: var(--transition);
+    display: flex;
+    align-items: flex-start;
+    gap: 15px;
+}
+
+.email-item-checkbox {
+    padding-top: 2px;
+}
+
+.email-item-checkbox input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--primary);
+}
+
+.email-item-content {
+    flex: 1;
+    min-width: 0;
 }
 
 .email-item:hover {

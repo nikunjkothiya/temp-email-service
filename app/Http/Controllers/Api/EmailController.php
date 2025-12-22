@@ -29,6 +29,7 @@ class EmailController extends Controller
         $emails = $inbox->emails()
             ->select(['id', 'from_email', 'from_name', 'subject', 'is_read', 'received_at', 'created_at'])
             ->withCount('attachments')
+            ->orderBy('received_at', 'desc')
             ->get()
             ->map(function ($email) {
                 return [
@@ -128,6 +129,37 @@ class EmailController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Email deleted successfully',
+        ]);
+    }
+
+    /**
+     * Bulk delete emails.
+     */
+    public function bulkDestroy(Request $request, string $token): JsonResponse
+    {
+        $inbox = Inbox::findByToken($token);
+        
+        if (!$inbox) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Inbox not found or expired',
+            ], 404);
+        }
+
+        $ids = $request->input('ids', []);
+        
+        if (empty($ids)) {
+            return response()->json([
+                'success' => false,
+                'error' => 'No email IDs provided',
+            ], 400);
+        }
+
+        $inbox->emails()->whereIn('id', $ids)->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => count($ids) . ' emails deleted successfully',
         ]);
     }
 

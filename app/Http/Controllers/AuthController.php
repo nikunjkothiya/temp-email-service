@@ -153,8 +153,8 @@ class AuthController extends Controller
             return back()->withErrors(['otp' => 'Invalid or expired OTP.']);
         }
 
-        // Mark OTP as used and log in user
-        $otp->markAsUsed();
+        // Delete OTP and log in user
+        $otp->delete();
         session()->forget('login_user_id');
         Auth::login($user, true);
 
