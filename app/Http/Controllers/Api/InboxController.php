@@ -29,7 +29,10 @@ class InboxController extends Controller
         
         // If user is authenticated, delete their old inboxes first
         if ($user) {
-            Inbox::where('user_id', $user->id)->delete();
+            $oldInboxes = Inbox::where('user_id', $user->id)->get();
+            foreach ($oldInboxes as $inbox) {
+                $inbox->delete();
+            }
         }
 
         $inbox = Inbox::generateNew($domain, $user);

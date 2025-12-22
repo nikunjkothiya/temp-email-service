@@ -29,17 +29,12 @@ class CleanupExpiredInboxes extends Command
             $inboxEmailCount = $inbox->emails()->count();
             $emailCount += $inboxEmailCount;
 
-            // Get all emails to delete attachments
+            // Get all emails to count attachments
             foreach ($inbox->emails as $email) {
                 $attachmentCount += $email->attachments()->count();
-                
-                // Delete attachment files
-                foreach ($email->attachments as $attachment) {
-                    Storage::disk('local')->delete($attachment->storage_path);
-                }
             }
 
-            // Delete inbox (cascades to emails and attachments)
+            // Delete inbox (cascades to emails and attachments via model events)
             $inbox->delete();
         }
 

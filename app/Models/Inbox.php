@@ -106,4 +106,15 @@ class Inbox extends Model
             ->where('expires_at', '>', now())
             ->first();
     }
+    /**
+     * Delete emails when the inbox is deleted.
+     */
+    protected static function booted(): void
+    {
+        static::deleting(function (Inbox $inbox) {
+            foreach ($inbox->emails as $email) {
+                $email->delete();
+            }
+        });
+    }
 }

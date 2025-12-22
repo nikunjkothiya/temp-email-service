@@ -75,4 +75,15 @@ class Email extends Model
         }
         return $this->from_email;
     }
+    /**
+     * Delete attachments when the email is deleted.
+     */
+    protected static function booted(): void
+    {
+        static::deleting(function (Email $email) {
+            foreach ($email->attachments as $attachment) {
+                $attachment->delete();
+            }
+        });
+    }
 }

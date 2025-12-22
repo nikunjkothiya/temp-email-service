@@ -122,7 +122,11 @@ class EmailController extends Controller
 
         $ids = $request->validated()['ids'];
         
-        $inbox->emails()->whereIn('id', $ids)->delete();
+        $emails = $inbox->emails()->whereIn('id', $ids)->get();
+        
+        foreach ($emails as $email) {
+            $email->delete();
+        }
 
         return $this->successResponse(null, count($ids) . ' emails deleted successfully');
     }
