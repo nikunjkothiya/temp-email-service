@@ -240,4 +240,4 @@ composer run test
 
 ## 📄 License
 
-MIT License - see [LICENSE](LICENSE) file.
+This project is open-source and free to use.
