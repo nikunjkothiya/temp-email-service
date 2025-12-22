@@ -3,15 +3,16 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Attachment;
-use App\Models\Email;
+use App\Http\Requests\Api\BulkDeleteEmailsRequest;
 use App\Models\Inbox;
+use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class EmailController extends Controller
 {
+    use ApiResponse;
+
     /**
      * List all emails for an inbox.
      */
@@ -20,10 +21,7 @@ class EmailController extends Controller
         $inbox = Inbox::findByToken($token);
         
         if (!$inbox) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Inbox not found or expired',
-            ], 404);
+            return $this->errorResponse('Inbox not found or expired', 404);
         }
         
         $emails = $inbox->emails()
@@ -44,10 +42,7 @@ class EmailController extends Controller
                 ];
             });
         
-        return response()->json([
-            'success' => true,
-            'data' => $emails,
-        ]);
+        return $this->successResponse($emails);
     }
 
     /**
@@ -58,46 +53,37 @@ class EmailController extends Controller
         $inbox = Inbox::findByToken($token);
         
         if (!$inbox) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Inbox not found or expired',
-            ], 404);
+            return $this->errorResponse('Inbox not found or expired', 404);
         }
         
         $email = $inbox->emails()->with('attachments')->find($emailId);
         
         if (!$email) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Email not found',
-            ], 404);
+            return $this->errorResponse('Email not found', 404);
         }
         
         // Mark as read
         $email->markAsRead();
         
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'id' => $email->id,
-                'from_email' => $email->from_email,
-                'from_name' => $email->from_name,
-                'to_email' => $email->to_email,
-                'subject' => $email->subject,
-                'body_text' => $email->body_text,
-                'body_html' => $email->body_html,
-                'is_read' => $email->is_read,
-                'received_at' => $email->received_at->toIso8601String(),
-                'attachments' => $email->attachments->map(function ($attachment) {
-                    return [
-                        'id' => $attachment->id,
-                        'filename' => $attachment->filename,
-                        'mime_type' => $attachment->mime_type,
-                        'size' => $attachment->size,
-                        'human_size' => $attachment->human_size,
-                    ];
-                }),
-            ],
+        return $this->successResponse([
+            'id' => $email->id,
+            'from_email' => $email->from_email,
+            'from_name' => $email->from_name,
+            'to_email' => $email->to_email,
+            'subject' => $email->subject,
+            'body_text' => $email->body_text,
+            'body_html' => $email->body_html,
+            'is_read' => $email->is_read,
+            'received_at' => $email->received_at->toIso8601String(),
+            'attachments' => $email->attachments->map(function ($attachment) {
+                return [
+                    'id' => $attachment->id,
+                    'filename' => $attachment->filename,
+                    'mime_type' => $attachment->mime_type,
+                    'size' => $attachment->size,
+                    'human_size' => $attachment->human_size,
+                ];
+            }),
         ]);
     }
 
@@ -109,58 +95,36 @@ class EmailController extends Controller
         $inbox = Inbox::findByToken($token);
         
         if (!$inbox) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Inbox not found or expired',
-            ], 404);
+            return $this->errorResponse('Inbox not found or expired', 404);
         }
         
         $email = $inbox->emails()->find($emailId);
         
         if (!$email) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Email not found',
-            ], 404);
+            return $this->errorResponse('Email not found', 404);
         }
         
         $email->delete();
         
-        return response()->json([
-            'success' => true,
-            'message' => 'Email deleted successfully',
-        ]);
+        return $this->successResponse(null, 'Email deleted successfully');
     }
 
     /**
      * Bulk delete emails.
      */
-    public function bulkDestroy(Request $request, string $token): JsonResponse
+    public function bulkDestroy(BulkDeleteEmailsRequest $request, string $token): JsonResponse
     {
         $inbox = Inbox::findByToken($token);
         
         if (!$inbox) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Inbox not found or expired',
-            ], 404);
+            return $this->errorResponse('Inbox not found or expired', 404);
         }
 
-        $ids = $request->input('ids', []);
+        $ids = $request->validated()['ids'];
         
-        if (empty($ids)) {
-            return response()->json([
-                'success' => false,
-                'error' => 'No email IDs provided',
-            ], 400);
-        }
-
         $inbox->emails()->whereIn('id', $ids)->delete();
 
-        return response()->json([
-            'success' => true,
-            'message' => count($ids) . ' emails deleted successfully',
-        ]);
+        return $this->successResponse(null, count($ids) . ' emails deleted successfully');
     }
 
     /**
@@ -171,28 +135,19 @@ class EmailController extends Controller
         $inbox = Inbox::findByToken($token);
         
         if (!$inbox) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Inbox not found or expired',
-            ], 404);
+            return $this->errorResponse('Inbox not found or expired', 404);
         }
         
         $email = $inbox->emails()->find($emailId);
         
         if (!$email) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Email not found',
-            ], 404);
+            return $this->errorResponse('Email not found', 404);
         }
         
         $attachment = $email->attachments()->find($attachmentId);
         
         if (!$attachment) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Attachment not found',
-            ], 404);
+            return $this->errorResponse('Attachment not found', 404);
         }
         
         return response()->streamDownload(function () use ($attachment) {

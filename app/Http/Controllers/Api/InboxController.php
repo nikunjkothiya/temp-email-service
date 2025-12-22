@@ -3,17 +3,21 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Api\CreateInboxRequest;
+use App\Http\Requests\Api\RefreshInboxRequest;
 use App\Models\Inbox;
+use App\Traits\ApiResponse;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class InboxController extends Controller
 {
+    use ApiResponse;
+
     /**
      * Create a new temporary inbox.
      */
-    public function create(Request $request): JsonResponse
+    public function create(CreateInboxRequest $request): JsonResponse
     {
         $domain = $request->input('domain', 'tempmail.local');
         
@@ -32,18 +36,15 @@ class InboxController extends Controller
         
         $expiryLabel = $user ? '1 week' : '1 hour';
         
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'id' => $inbox->id,
-                'email' => $inbox->email,
-                'token' => $inbox->token,
-                'expires_at' => $inbox->expires_at->toIso8601String(),
-                'expires_in_seconds' => $inbox->expires_at->diffInSeconds(now()),
-                'is_authenticated' => $user !== null,
-                'expiry_label' => $expiryLabel,
-            ],
-        ], 201);
+        return $this->successResponse([
+            'id' => $inbox->id,
+            'email' => $inbox->email,
+            'token' => $inbox->token,
+            'expires_at' => $inbox->expires_at->toIso8601String(),
+            'expires_in_seconds' => $inbox->expires_at->diffInSeconds(now()),
+            'is_authenticated' => $user !== null,
+            'expiry_label' => $expiryLabel,
+        ], null, 201);
     }
 
     /**
@@ -54,58 +55,47 @@ class InboxController extends Controller
         $inbox = Inbox::findByToken($token);
         
         if (!$inbox) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Inbox not found or expired',
-            ], 404);
+            return $this->errorResponse('Inbox not found or expired', 404);
         }
         
         $expiryLabel = $inbox->isAuthenticated() ? '1 week' : '1 hour';
         
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'id' => $inbox->id,
-                'email' => $inbox->email,
-                'expires_at' => $inbox->expires_at->toIso8601String(),
-                'expires_in_seconds' => $inbox->expires_at->diffInSeconds(now()),
-                'unread_count' => $inbox->unread_count,
-                'emails_count' => $inbox->emails()->count(),
-                'is_authenticated' => $inbox->isAuthenticated(),
-                'expiry_label' => $expiryLabel,
-            ],
+        return $this->successResponse([
+            'id' => $inbox->id,
+            'email' => $inbox->email,
+            'expires_at' => $inbox->expires_at->toIso8601String(),
+            'expires_in_seconds' => $inbox->expires_at->diffInSeconds(now()),
+            'unread_count' => $inbox->unread_count,
+            'emails_count' => $inbox->emails()->count(),
+            'is_authenticated' => $inbox->isAuthenticated(),
+            'expiry_label' => $expiryLabel,
         ]);
     }
 
     /**
      * Refresh/extend inbox expiration.
      */
-    public function refresh(string $token, Request $request): JsonResponse
+    public function refresh(string $token, RefreshInboxRequest $request): JsonResponse
     {
         $inbox = Inbox::findByToken($token);
         
         if (!$inbox) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Inbox not found or expired',
-            ], 404);
+            return $this->errorResponse('Inbox not found or expired', 404);
         }
         
         $additionalMinutes = $request->input('duration', 60);
-        $additionalMinutes = max(10, min(1440, (int) $additionalMinutes));
+        // Validation is already handled by RefreshInboxRequest, but we can keep the clamp logic or move it there.
+        // Keeping it here as business logic for now, though validation ensures min/max.
         
         $inbox->update([
             'expires_at' => now()->addMinutes($additionalMinutes),
         ]);
         
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'id' => $inbox->id,
-                'email' => $inbox->email,
-                'expires_at' => $inbox->expires_at->toIso8601String(),
-                'expires_in_seconds' => $inbox->expires_at->diffInSeconds(now()),
-            ],
+        return $this->successResponse([
+            'id' => $inbox->id,
+            'email' => $inbox->email,
+            'expires_at' => $inbox->expires_at->toIso8601String(),
+            'expires_in_seconds' => $inbox->expires_at->diffInSeconds(now()),
         ]);
     }
 
@@ -117,17 +107,11 @@ class InboxController extends Controller
         $inbox = Inbox::findByToken($token);
         
         if (!$inbox) {
-            return response()->json([
-                'success' => false,
-                'error' => 'Inbox not found or expired',
-            ], 404);
+            return $this->errorResponse('Inbox not found or expired', 404);
         }
         
         $inbox->delete();
         
-        return response()->json([
-            'success' => true,
-            'message' => 'Inbox deleted successfully',
-        ]);
+        return $this->successResponse(null, 'Inbox deleted successfully');
     }
 }

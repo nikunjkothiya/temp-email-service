@@ -2,6 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\RegisterRequest;
+use App\Http\Requests\Auth\VerifyOtpRequest;
 use App\Mail\LoginOtpMail;
 use App\Mail\VerifyEmailMail;
 use App\Models\OtpCode;
@@ -26,13 +29,9 @@ class AuthController extends Controller
     /**
      * Handle registration.
      */
-    public function register(Request $request): RedirectResponse
+    public function register(RegisterRequest $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'email' => 'required|email|unique:users,email',
-            'password' => 'required|string|min:8|confirmed',
-        ]);
+        $validated = $request->validated();
 
         $user = User::create([
             'name' => $validated['name'],
@@ -43,7 +42,7 @@ class AuthController extends Controller
         // Generate verification token and send email
         $token = $user->generateVerificationToken();
         $verificationUrl = route('verify-email', ['token' => $token]);
-        
+
         Mail::to($user->email)->send(new VerifyEmailMail($user, $verificationUrl));
 
         return redirect()->route('verify-email.notice')
@@ -65,7 +64,7 @@ class AuthController extends Controller
     {
         $user = User::findByVerificationToken($token);
 
-        if (!$user) {
+        if (! $user) {
             return redirect()->route('login')
                 ->with('error', 'Invalid or expired verification link.');
         }
@@ -87,20 +86,17 @@ class AuthController extends Controller
     /**
      * Handle login (step 1: validate credentials, send OTP).
      */
-    public function login(Request $request): RedirectResponse
+    public function login(LoginRequest $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'email' => 'required|email',
-            'password' => 'required|string',
-        ]);
+        $validated = $request->validated();
 
         $user = User::where('email', $validated['email'])->first();
 
-        if (!$user || !Hash::check($validated['password'], $user->password)) {
+        if (! $user || ! Hash::check($validated['password'], $user->password)) {
             return back()->withErrors(['email' => 'Invalid credentials.'])->withInput();
         }
 
-        if (!$user->hasVerifiedEmail()) {
+        if (! $user->hasVerifiedEmail()) {
             return back()->withErrors(['email' => 'Please verify your email first.'])->withInput();
         }
 
@@ -119,7 +115,7 @@ class AuthController extends Controller
      */
     public function showLoginOtp(): View|RedirectResponse
     {
-        if (!session('login_user_id')) {
+        if (! session('login_user_id')) {
             return redirect()->route('login');
         }
 
@@ -129,27 +125,26 @@ class AuthController extends Controller
     /**
      * Verify OTP and complete login.
      */
-    public function verifyLoginOtp(Request $request): RedirectResponse
+    public function verifyLoginOtp(VerifyOtpRequest $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'otp' => 'required|string|size:6',
-        ]);
+        $validated = $request->validated();
 
         $userId = session('login_user_id');
-        if (!$userId) {
+        if (! $userId) {
             return redirect()->route('login')
                 ->with('error', 'Session expired. Please log in again.');
         }
 
         $user = User::find($userId);
-        if (!$user) {
+        if (! $user) {
             session()->forget('login_user_id');
+
             return redirect()->route('login')
                 ->with('error', 'User not found.');
         }
 
         $otp = OtpCode::verify($user, $validated['otp'], 'login');
-        if (!$otp) {
+        if (! $otp) {
             return back()->withErrors(['otp' => 'Invalid or expired OTP.']);
         }
 
@@ -159,7 +154,7 @@ class AuthController extends Controller
         Auth::login($user, true);
 
         return redirect()->route('home')
-            ->with('success', 'Welcome back, ' . $user->name . '!');
+            ->with('success', 'Welcome back, '.$user->name.'!');
     }
 
     /**
@@ -168,12 +163,12 @@ class AuthController extends Controller
     public function resendLoginOtp(): RedirectResponse
     {
         $userId = session('login_user_id');
-        if (!$userId) {
+        if (! $userId) {
             return redirect()->route('login');
         }
 
         $user = User::find($userId);
-        if (!$user) {
+        if (! $user) {
             return redirect()->route('login');
         }
 
